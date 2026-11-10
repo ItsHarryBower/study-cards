@@ -1,4 +1,4 @@
-const C = 'vq-2026-11-10-1026';
+const C = 'vq-2026-11-10-1403';
 const FILES = ['./', 'index.html', 'cards.enc.json', 'manifest.webmanifest', 'icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())));
