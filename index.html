@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-title" content="Viva quiz">
+<meta name="theme-color" content="#2a78d6">
+<title>Viva Quiz</title>
+
+<style>
+:root{--bg:#f6f5f1;--surface:#fff;--ink:#1d1d1b;--ink-2:#55544e;--ink-3:#8a8980;--line:#e4e2da;--accent:#2a78d6;--good:#1b7f4b;--bad:#c23b3a;
+  font-family:ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141413;--surface:#1d1d1b;--ink:#f3f2ec;--ink-2:#c3c2b7;--ink-3:#8f8e85;--line:#2f2e2b;--accent:#3987e5;--good:#4cc488;--bad:#ef7a7a}}
+:root[data-theme="dark"]{--bg:#141413;--surface:#1d1d1b;--ink:#f3f2ec;--ink-2:#c3c2b7;--ink-3:#8f8e85;--line:#2f2e2b;--accent:#3987e5;--good:#4cc488;--bad:#ef7a7a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.5}
+main{max-width:720px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+h1{font-size:20px;margin:6px 0 2px}h2{font-size:16px;margin:16px 0 6px}
+.muted{color:var(--ink-3)}.small{font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}
+button,select{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:11px 14px;font-size:15px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+label.f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-3)}
+.meta{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)}
+.q{font-size:20px;line-height:1.35;margin:8px 0 12px;overflow-wrap:anywhere}
+.prog{height:4px;background:var(--line);border-radius:2px;overflow:hidden}.prog i{display:block;height:100%;background:var(--accent)}
+.opt{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;width:100%;text-align:left;padding:13px 12px;margin:8px 0;font-size:16px;line-height:1.4;border-radius:12px}
+.opt b{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.opt.ok{border-color:var(--good);background:color-mix(in srgb,var(--good) 14%,var(--surface))}.opt.ok b{background:var(--good);border-color:var(--good);color:#fff}
+.opt.no{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--surface))}.opt.no b{background:var(--bad);border-color:var(--bad);color:#fff}
+.opt.dim{opacity:.5}
+.verdict{font-size:22px;font-weight:650;margin:6px 0}.verdict.ok{color:var(--good)}.verdict.no{color:var(--bad)}
+.fb{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+.fb p{margin:6px 0}
+details{margin:6px 0}summary{cursor:pointer;color:var(--ink-2)}
+.next{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));width:100%;padding:15px;font-size:17px;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:14px}td{border-bottom:1px solid var(--line);padding:6px 4px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all;background:var(--bg);padding:10px;display:block;border-radius:8px;border:1px solid var(--line)}
+.miss{margin:10px 0;padding-bottom:8px;border-bottom:1px solid var(--line)}
+#nojs{border-color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+<div id="nojs" class="card"><b>The quiz is not running in this viewer.</b><p class="small">This page needs JavaScript. If you opened it from the Files app and see this message, the viewer is only showing a preview. Tell Claude: the Files preview does not run the quiz.</p></div>
+<div id="app"></div>
+</main>
+<script>
+let DATA = /*__QUIZ__*/null;   // the file pack has the cards here, the site leaves it null and unlock() decrypts them
+document.getElementById("nojs").remove();
+let S_KEY = "", cards = [], byId = {}, subjects = [];
+const L = "ABCDE";
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const md = s => esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code style='display:inline;padding:0 3px'>$1</code>");
+const $ = s => document.querySelector(s);
+const app = $("#app");
+// ---- storage: answers stay on this phone until sent. Wrapped, because private browsing can refuse storage
+let store = {log: [], sentUpTo: 0, set: {subj: "", lvl: "", n: 20, order: "weak"}, lastCode: ""};
+let canSave = true;
+const save = () => { try { localStorage.setItem(S_KEY, JSON.stringify(store)); } catch (e) { canSave = false; } };
+function boot(d){
+  DATA = d; S_KEY = d.storeKey || ("viva-quiz-" + (d.pack || "pack"));   // the site keeps one key, so answers survive updates
+  try { const s = JSON.parse(localStorage.getItem(S_KEY) || "null"); if (s) store = Object.assign(store, s); } catch (e) {}
+  cards = d.cards || []; byId = Object.fromEntries(cards.map(c => [c.id, c])); subjects = [...new Set(cards.map(c => c.subject))];
+  if (!cards.length) app.innerHTML = `<div class="card">This pack has no cards. Rebuild it on the Mac.</div>`;
+  else home();
+}
+function lastScore(id){   // newest first: this phone's own answers, then the Mac's scores baked in at build time
+  for (let i = store.log.length - 1; i >= 0; i--) if (store.log[i].id === id) return {s: store.log[i].s, t: store.log[i].t};
+  const m = (DATA.stats || {})[id]; return m ? {s: m.s, t: m.t} : null;
+}
+function priority(c){
+  const l = lastScore(c.id); if (!l) return 3 + Math.random();
+  const days = (Date.now() - new Date(l.t).getTime()) / 864e5;
+  return (l.s === 2 ? 0.4 : 2.6) + Math.min(days / 7, 1) + Math.random() * 0.5;
+}
+const unsent = () => store.log.slice(store.sentUpTo);
+
+// ---- home
+function home(){
+  const Z = store.set, n = unsent().length;
+  const seen = cards.filter(c => lastScore(c.id)), right = seen.filter(c => lastScore(c.id).s === 2).length;
+  const count = (k, v) => cards.filter(c => c[k] === v).length;
+  const opt = (v, cur, t) => `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(t)}</option>`;
+  app.innerHTML = `<h1>Viva quiz</h1><div class="muted small">${cards.length} cards · built ${esc(DATA.built)} · ${seen.length} answered · ${seen.length ? Math.round(100 * right / seen.length) : 0}% right last time</div>
+    ${canSave ? "" : `<div class="card small" style="border-color:var(--bad)">This browser is not keeping answers (private browsing?). Send scores at the end of each round.</div>`}
+    <div class="card"><div class="grid">
+      <label class="f">Subject<select id="z-subj">${opt("", Z.subj, "All subjects")}${subjects.map(s => opt(s, Z.subj, `${s} (${count("subject", s)})`)).join("")}</select></label>
+      <label class="f">Level<select id="z-lvl">${opt("", Z.lvl, "Any")}${opt("1", Z.lvl, "1 core")}${opt("2", Z.lvl, "2 working")}${opt("3", Z.lvl, "3 scrutiny")}</select></label>
+      <label class="f">Cards<select id="z-n">${[10, 20, 40, 0].map(v => opt(v, Z.n, v ? v : "All")).join("")}</select></label>
+      <label class="f">Order<select id="z-order">${opt("weak", Z.order, "Weakest first")}${opt("random", Z.order, "Random")}</select></label></div>
+      <button class="primary next" id="go">Start</button>
+      <div class="row"><button id="theory">Theory only</button><button id="hard">Hardest</button><button id="missed">Ones I got wrong</button></div></div>
+    <div class="card"><h2 style="margin-top:0">Send scores to the Mac</h2>
+      <p class="small">${n ? `${n} answer${n === 1 ? "" : "s"} not sent yet.` : "Everything is sent."} The code goes into the Practice tab (Quiz, Import phone scores), and the next set of cards targets what you got wrong.</p>
+      <div class="row"><button class="primary" id="send"${n ? "" : " disabled"}>Send scores</button>${store.lastCode ? `<button id="resend">Show last code</button>` : ""}</div></div>`;
+  const keep = () => { Z.subj = $("#z-subj").value; Z.lvl = $("#z-lvl").value; Z.n = +$("#z-n").value; Z.order = $("#z-order").value; save(); };
+  ["z-subj", "z-lvl", "z-n", "z-order"].forEach(id => $("#" + id).onchange = keep);
+  const pick = list => { const o = Z.order === "random" ? list.map(c => [Math.random(), c]).sort((a, b) => a[0] - b[0]).map(x => x[1]) : list.map(c => [priority(c), c]).sort((a, b) => b[0] - a[0]).map(x => x[1]); return Z.n ? o.slice(0, Z.n) : o; };
+  const start = list => list.length ? play(pick(list)) : alert("No cards match.");
+  $("#go").onclick = () => start(cards.filter(c => (!Z.subj || c.subject === Z.subj) && (!Z.lvl || String(c.level) === Z.lvl)));
+  $("#theory").onclick = () => start(cards.filter(c => c.area === "fundamentals"));
+  $("#hard").onclick = () => start(cards.filter(c => c.level === 3));
+  $("#missed").onclick = () => { const l = cards.filter(c => (lastScore(c.id) || {}).s === 0); l.length ? start(l) : alert("Nothing missed yet."); };
+  $("#send").onclick = sendScores;
+  const r = $("#resend"); if (r) r.onclick = () => showCode(store.lastCode, false);
+}
+
+// ---- one round
+function play(set){
+  const R = {set, i: 0, res: {}, picks: {}};
+  function show(){
+    if (R.i >= R.set.length) return end();
+    const c = R.set[R.i];
+    const fixed = o => /^(none|all|both|neither) of (the|these)/i.test(o.t);
+    R.opts = c.opts.map(o => [fixed(o) ? 2 : Math.random(), o]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+    const n = Object.keys(R.res).length, got = Object.values(R.res).filter(Boolean).length;
+    app.innerHTML = `<div class="prog"><i style="width:${100 * R.i / R.set.length}%"></i></div>
+      <div class="card"><div class="meta">${esc(c.subject)} · ${esc(c.topic || "")}</div>
+      <div class="muted small">${R.i + 1} of ${R.set.length} · level ${c.level}${n ? ` · ${got}/${n} right` : ""}</div>
+      <div class="q">${md(c.q)}</div>
+      <div id="opts">${R.opts.map((o, k) => `<button class="opt" data-k="${k}"><b>${L[k]}</b><span>${md(o.t)}</span></button>`).join("")}</div>
+      <div id="fb"></div></div>
+      <div class="row"><button id="stop">End round</button><button id="skip">Skip</button></div>`;
+    app.querySelectorAll(".opt").forEach(b => b.onclick = () => answer(+b.dataset.k));
+    $("#stop").onclick = () => { R.set = R.set.slice(0, R.i + (R.locked ? 1 : 0)); end(); };
+    $("#skip").onclick = () => { R.i++; R.locked = false; show(); scrollTo(0, 0); };
+    R.locked = false;
+  }
+  function answer(k){
+    if (R.locked) return; R.locked = true;
+    const c = R.set[R.i], o = R.opts[k], right = R.opts.find(x => x.ok);
+    R.res[c.id] = o.ok; R.picks[c.id] = o.t;
+    store.log.push({id: c.id, s: o.ok ? 2 : 0, t: new Date().toISOString()}); save();
+    app.querySelectorAll(".opt").forEach((b, j) => { const x = R.opts[j]; b.disabled = true;
+      b.classList.toggle("ok", x.ok); b.classList.toggle("no", j === k && !x.ok); b.classList.toggle("dim", j !== k && !x.ok); });
+    const others = R.opts.filter(x => !x.ok && x !== o && x.n);
+    $("#fb").innerHTML = `<div class="fb"><div class="verdict ${o.ok ? "ok" : "no"}">${o.ok ? "Correct" : "Wrong"}</div>
+      ${!o.ok && o.n ? `<p>${md(o.n)}</p>` : ""}${!o.ok ? `<p><b>Answer:</b> ${md(right.t)}</p>` : ""}
+      <p class="small">${md(c.why || "")}${right.n ? " " + md(right.n) : ""}</p>
+      ${others.length ? `<details class="small"><summary>Why the other options are wrong</summary><ul>${others.map(x => `<li><i>${md(x.t)}</i>: ${md(x.n)}</li>`).join("")}</ul></details>` : ""}
+      ${c.src ? `<p class="muted small">Source: ${md(c.src)}</p>` : ""}</div>
+      <button class="primary next" id="next">${R.i + 1 < R.set.length ? "Next" : "See result"}</button>`;
+    $("#next").onclick = () => { R.i++; show(); scrollTo(0, 0); };
+  }
+  function end(){
+    const ids = Object.keys(R.res), got = ids.filter(id => R.res[id]).length;
+    const by = {}; R.set.filter(c => c.id in R.res).forEach(c => { const g = by[c.subject] = by[c.subject] || [0, 0]; g[1]++; if (R.res[c.id]) g[0]++; });
+    const miss = R.set.filter(c => R.res[c.id] === false);
+    app.innerHTML = `<h1>${ids.length ? Math.round(100 * got / ids.length) : 0}% <span class="muted" style="font-size:16px;font-weight:400">${got} of ${ids.length} right</span></h1>
+      <div class="card"><table>${Object.entries(by).sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).map(([t, [r, n]]) => `<tr><td>${esc(t)}</td><td>${r}/${n}</td></tr>`).join("")}</table></div>
+      <button class="primary next" id="send">Send scores to the Mac</button>
+      <div class="row">${miss.length ? `<button id="redo">Redo the ${miss.length} I missed</button>` : ""}<button id="home">Home</button></div>
+      ${miss.length ? `<div class="card"><h2 style="margin-top:0">What you missed</h2>${miss.map(c => `<div class="miss"><b>${md(c.q)}</b><div class="small" style="color:var(--bad)">You said: ${md(R.picks[c.id])}</div><div class="small">Answer: ${md((c.opts.find(o => o.ok) || {}).t)}</div></div>`).join("")}</div>` : ""}`;
+    $("#send").onclick = sendScores;
+    $("#home").onclick = home;
+    const r = $("#redo"); if (r) r.onclick = () => play(miss.map(c => [Math.random(), c]).sort((a, b) => a[0] - b[0]).map(x => x[1]));
+    scrollTo(0, 0);
+  }
+  show();
+}
+
+// ---- sending: a short code, through the share sheet (AirDrop, Messages, Notes, Mail to yourself) or copied
+function code(){
+  const u = unsent();
+  return `PQ1 ${DATA.pack} ` + u.map(a => `${a.id}:${a.s}`).join(" ");
+}
+function sendScores(){
+  if (!unsent().length) return store.lastCode ? showCode(store.lastCode, false) : alert("Nothing to send.");
+  const c = code(), upTo = store.log.length;
+  store.lastCode = c; save();
+  showCode(c, true, upTo);
+}
+function showCode(c, fresh, upTo){
+  const n = c.split(" ").length - 2;
+  app.innerHTML = `<h1>Send scores</h1><div class="card">
+    <p class="small">${n} answer${n === 1 ? "" : "s"}. Send this code to yourself, then on the Mac paste it into Practice, Quiz, Import phone scores.</p>
+    <code id="code">${esc(c)}</code>
+    <div class="row">${navigator.share ? `<button class="primary" id="share">Share (AirDrop, Messages, Notes)</button>` : ""}<button id="copy">Copy code</button></div>
+    ${fresh ? `<div class="row"><button id="done">I have sent it</button><span class="muted small">marks these answers as sent</span></div>` : ""}
+    <div class="row"><button id="back">Back</button></div></div>`;
+  const sh = $("#share"); if (sh) sh.onclick = () => navigator.share({title: "Viva quiz scores", text: c}).catch(() => {});
+  $("#copy").onclick = () => {
+    const ok = () => { $("#copy").textContent = "Copied"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(c).then(ok, () => selectCode());
+    else selectCode();
+  };
+  const d = $("#done"); if (d) d.onclick = () => { store.sentUpTo = upTo; save(); home(); };
+  $("#back").onclick = home;
+}
+function selectCode(){ const r = document.createRange(); r.selectNodeContents($("#code")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+// Quiz site unlock (T131, 2026-11-10). The site holds only cards.enc.json: AES-256-GCM, key from the passphrase by
+// PBKDF2-SHA256. Decryption happens here, on the phone. "Remember on this phone" keeps the derived key in IndexedDB as a
+// non-extractable CryptoKey, so the passphrase itself is never stored. sw.js keeps a copy for offline use.
+const B64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+function idb(){ return new Promise((ok, no) => { const r = indexedDB.open("vq", 1); r.onupgradeneeded = () => r.result.createObjectStore("k"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
+async function idbGet(k){ try { const d = await idb(); return await new Promise(ok => { const r = d.transaction("k").objectStore("k").get(k); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch (e) { return null; } }
+async function idbPut(k, v){ try { const d = await idb(); await new Promise(ok => { const t = d.transaction("k", "readwrite"); t.objectStore("k").put(v, k); t.oncomplete = ok; t.onerror = ok; }); } catch (e) {} }
+async function idbDel(k){ try { const d = await idb(); await new Promise(ok => { const t = d.transaction("k", "readwrite"); t.objectStore("k").delete(k); t.oncomplete = ok; t.onerror = ok; }); } catch (e) {} }
+async function deriveKey(pw, enc){
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({name: "PBKDF2", salt: B64(enc.salt), iterations: enc.iter, hash: "SHA-256"}, base, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+}
+async function openPack(key, enc){
+  try { const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: B64(enc.iv)}, key, B64(enc.ct)); return JSON.parse(new TextDecoder().decode(pt)); }
+  catch (e) { return null; }
+}
+async function unlock(boot){
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if (!window.crypto || !crypto.subtle){ app.innerHTML = `<div class="card">This browser cannot decrypt the cards. Open the page in Safari.<\/div>`; return; }
+  app.innerHTML = `<div class="card muted">Loading...<\/div>`;
+  let enc;
+  try { enc = await (await fetch("cards.enc.json", {cache: "no-cache"})).json(); }
+  catch (e) { app.innerHTML = `<div class="card">Could not load the cards. Open this once with a connection, after that it works offline.<\/div>`; return; }
+  const slot = "key-" + enc.salt;
+  const saved = await idbGet(slot);
+  if (saved){ const d = await openPack(saved, enc); if (d) return start(d); await idbDel(slot); }
+  const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+  app.innerHTML = `<h1>Viva quiz<\/h1><div class="card"><p class="small">Enter your passphrase. The cards are decrypted on this phone, nothing is sent anywhere.<\/p>
+    <input id="pw" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" style="width:100%;font:inherit;font-size:17px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)">
+    <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="keep" checked> Remember on this phone<\/label>
+    <button class="primary next" id="go">Unlock<\/button><div id="err" class="small" style="color:var(--bad);margin-top:6px"><\/div><\/div>
+    ${standalone ? "" : `<div class="card small">First time: tap Share, then Add to Home Screen, and open the quiz from that icon. The Home Screen app keeps its own answers, separate from Safari, so always open it from the icon.<\/div>`}`;
+  const go = async () => {
+    const b = $("#go"); $("#err").textContent = ""; b.disabled = true; b.textContent = "Unlocking...";
+    const key = await deriveKey($("#pw").value, enc), d = await openPack(key, enc);
+    if (!d){ $("#err").textContent = "That passphrase does not open the cards."; b.disabled = false; b.textContent = "Unlock"; return; }
+    if ($("#keep").checked) await idbPut(slot, key);
+    start(d);
+  };
+  $("#go").onclick = go; $("#pw").onkeydown = e => { if (e.key === "Enter") go(); };
+  function start(d){ boot(d); }
+}
+
+if (DATA) boot(DATA);
+else if (typeof unlock === "function") unlock(boot);
+else app.innerHTML = `<div class="card">This pack has no cards. Rebuild it on the Mac.</div>`;
+</script>
+</body>
+</html>

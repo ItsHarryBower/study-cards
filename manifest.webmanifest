@@ -1,0 +1,16 @@
+{
+ "name": "Viva quiz",
+ "short_name": "Viva quiz",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f6f5f1",
+ "theme_color": "#2a78d6",
+ "icons": [
+  {
+   "src": "icon.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  }
+ ]
+}
